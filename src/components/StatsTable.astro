@@ -1,0 +1,246 @@
+---
+import type { CentreWithTrends } from '../lib/centres';
+import { formatPeriod } from '../lib/centres';
+
+interface Props {
+  centres: CentreWithTrends[];
+  counties: string[];
+  periodLabel: string;
+  historyFrom: string;
+  historyTo: string;
+}
+
+const { centres, counties, periodLabel, historyFrom, historyTo } = Astro.props;
+
+const historyJson = JSON.stringify(
+  centres.map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    county: c.county,
+    passRate: c.passRate,
+    waitWeeks: c.waitWeeks,
+    delivered: c.delivered,
+    noShow: c.noShow,
+    abandoned: c.abandoned,
+    passRateDelta: c.passRateDelta,
+    waitWeeksDelta: c.waitWeeksDelta,
+  })),
+);
+---
+
+<section class="view-panel" id="tracker-panel" aria-labelledby="view-heading">
+  <div class="view-panel__head">
+    <h2 id="view-heading">Centre tracker</h2>
+    <p class="view-panel__note">
+      Latest Category B snapshot for every RSA centre. Full monthly history runs from{' '}
+      {formatPeriod(historyFrom)} to {formatPeriod(historyTo)}. Use{' '}
+      <a href="/compare/">Compare</a> to put centres side by side, or{' '}
+      <a href="/charts/">Charts</a> for trends.
+    </p>
+  </div>
+
+  <div class="toolbar" role="search">
+    <label>
+      Search centres
+      <input type="search" id="filter-q" placeholder="e.g. Dún Laoghaire" autocomplete="off" />
+    </label>
+    <label>
+      County
+      <select id="filter-county">
+        <option value="">All counties</option>
+        {counties.map((c) => <option value={c}>{c}</option>)}
+      </select>
+    </label>
+  </div>
+
+  <p class="source-line" id="view-hint">
+    Showing latest Category B pass rate, wait, tests delivered, no-shows, and abandoned (
+    {periodLabel}). Source: CSO ROA30 / ROA36 via data.cso.ie. Δ columns vs previous month.
+  </p>
+
+  <div class="table-wrap">
+    <table class="stats" id="stats-table">
+      <caption class="sr-only">RSA Category B driving test statistics by centre</caption>
+      <thead id="stats-thead"></thead>
+      <tbody id="stats-tbody"></tbody>
+    </table>
+    <p class="empty-state" id="empty-state" hidden>No centres match your filters.</p>
+  </div>
+</section>
+
+<script type="application/json" id="tracker-data" set:html={historyJson} />
+
+<script>
+  const centres = JSON.parse(document.getElementById('tracker-data').textContent || '[]');
+  const panel = document.getElementById('tracker-panel');
+  const thead = document.getElementById('stats-thead');
+  const tbody = document.getElementById('stats-tbody');
+  const empty = document.getElementById('empty-state');
+
+  let sortKey = 'name';
+  let sortDir = 1;
+
+  function els() {
+    return {
+      q: document.getElementById('filter-q'),
+      county: document.getElementById('filter-county'),
+    };
+  }
+
+  function fmtDelta(v) {
+    if (v == null) return '—';
+    return (v > 0 ? '+' : '') + v;
+  }
+
+  function deltaClass(v) {
+    if (v == null || v === 0) return 'delta-flat';
+    return v > 0 ? 'delta-up' : 'delta-down';
+  }
+
+  function cell(content, className) {
+    const td = document.createElement('td');
+    if (className) td.className = className;
+    if (typeof content === 'string') td.textContent = content;
+    else td.appendChild(content);
+    return td;
+  }
+
+  function muted(text) {
+    const span = document.createElement('span');
+    span.className = 'muted';
+    span.textContent = text;
+    return span;
+  }
+
+  const cols = [
+    ['name', 'Centre'],
+    ['county', 'County'],
+    ['passRate', 'Pass rate %'],
+    ['passRateDelta', 'Δ pass'],
+    ['waitWeeks', 'Wait (weeks)'],
+    ['waitWeeksDelta', 'Δ wait'],
+    ['delivered', 'Delivered'],
+    ['noShow', 'No-shows'],
+    ['abandoned', 'Abandoned'],
+  ];
+
+  function renderHead() {
+    thead.innerHTML = '';
+    const tr = document.createElement('tr');
+    for (const [key, label] of cols) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.dataset.sort = key;
+      if (key === sortKey) th.setAttribute('aria-sort', sortDir === 1 ? 'ascending' : 'descending');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        if (sortKey === key) sortDir *= -1;
+        else {
+          sortKey = key;
+          sortDir = key === 'name' || key === 'county' ? 1 : -1;
+        }
+        render();
+      });
+      th.appendChild(btn);
+      tr.appendChild(th);
+    }
+    thead.appendChild(tr);
+  }
+
+  function sortValue(c, key) {
+    if (key === 'name') return c.name.toLowerCase();
+    if (key === 'county') return c.county;
+    return c[key];
+  }
+
+  function filteredSorted() {
+    const { q, county } = els();
+    const query = (q?.value || '').trim().toLowerCase();
+    const countyVal = county?.value || '';
+    let rows = centres.filter((c) => {
+      const matchQ =
+        !query ||
+        c.name.toLowerCase().includes(query) ||
+        c.county.toLowerCase().includes(query);
+      const matchC = !countyVal || c.county === countyVal;
+      return matchQ && matchC;
+    });
+    rows.sort((a, b) => {
+      const av = sortValue(a, sortKey);
+      const bv = sortValue(b, sortKey);
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return sortDir * String(av ?? '').localeCompare(String(bv ?? ''));
+      }
+      const an = av == null ? Number.NEGATIVE_INFINITY : Number(av);
+      const bn = bv == null ? Number.NEGATIVE_INFINITY : Number(bv);
+      return sortDir * (an - bn);
+    });
+    return rows;
+  }
+
+  function renderBody(rows) {
+    tbody.innerHTML = '';
+    for (const c of rows) {
+      const tr = document.createElement('tr');
+      const nameTh = document.createElement('th');
+      nameTh.scope = 'row';
+      const a = document.createElement('a');
+      a.href = `/centres/${c.slug}/`;
+      a.textContent = c.name;
+      nameTh.appendChild(a);
+      tr.appendChild(nameTh);
+      tr.appendChild(cell(c.county));
+      tr.appendChild(
+        cell(c.passRate == null ? muted('Not published') : String(c.passRate), 'num'),
+      );
+      tr.appendChild(cell(fmtDelta(c.passRateDelta), `num ${deltaClass(c.passRateDelta)}`));
+      tr.appendChild(
+        cell(c.waitWeeks == null ? muted('Not published') : String(c.waitWeeks), 'num'),
+      );
+      tr.appendChild(cell(fmtDelta(c.waitWeeksDelta), `num ${deltaClass(c.waitWeeksDelta)}`));
+      tr.appendChild(
+        cell(c.delivered == null ? muted('Not published') : String(c.delivered), 'num'),
+      );
+      tr.appendChild(cell(c.noShow == null ? muted('Not published') : String(c.noShow), 'num'));
+      tr.appendChild(
+        cell(c.abandoned == null ? muted('Not published') : String(c.abandoned), 'num'),
+      );
+      tbody.appendChild(tr);
+    }
+  }
+
+  function render() {
+    renderHead();
+    const rows = filteredSorted();
+    renderBody(rows);
+    if (empty) {
+      empty.hidden = rows.length > 0;
+      empty.style.display = rows.length > 0 ? 'none' : 'block';
+    }
+  }
+
+  panel?.addEventListener('input', (e) => {
+    if (e.target.id === 'filter-q') render();
+  });
+  panel?.addEventListener('change', (e) => {
+    if (e.target.id === 'filter-county') render();
+  });
+
+  render();
+</script>
+
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>

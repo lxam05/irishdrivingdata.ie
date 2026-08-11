@@ -1,0 +1,405 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import DriveFlowCta from '../components/DriveFlowCta.astro';
+import { data, mapPayload } from '../lib/centres';
+
+const payload = mapPayload();
+const { meta } = data;
+// Slim payload for the client (no full history)
+const clientPayload = {
+  meta: {
+    period: payload.meta.period,
+    lastUpdatedLabel: payload.meta.lastUpdatedLabel,
+    national: payload.meta.national,
+  },
+  centres: payload.centres.map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    county: c.county,
+    lat: c.lat,
+    lng: c.lng,
+    passRate: c.passRate,
+    delivered: c.delivered,
+    waitWeeks: c.waitWeeks,
+    passRateRank: c.passRateRank,
+    rankOf: c.rankOf,
+    passRate12m: c.passRate12m,
+    driveflowUrl: c.driveflowUrl,
+  })),
+};
+
+const rates = clientPayload.centres.map((c) => c.passRate).filter((v): v is number => v != null);
+const minRate = rates.length ? Math.min(...rates) : 40;
+const maxRate = rates.length ? Math.max(...rates) : 70;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'Irish driving test centre map',
+  description:
+    'Interactive map of RSA Category B driving test centres in Ireland, coloured by pass rate.',
+  url: `${meta.siteUrl}/map/`,
+  applicationCategory: 'ReferenceApplication',
+  operatingSystem: 'Any',
+  creator: {
+    '@type': 'Person',
+    name: "Liam O'Connor",
+    url: `${meta.siteUrl}/about/#author`,
+  },
+};
+---
+
+<BaseLayout
+  title={`Irish driving test centre map (${meta.lastUpdatedLabel}) | Irish Driving Data`}
+  description="Interactive map of every RSA test centre in Ireland — dots coloured by Category B pass rate, with rank, tests conducted, and 12-month change on hover."
+  canonicalPath="/map/"
+  jsonLd={jsonLd}
+>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+
+  <section class="map-page" id="map-page">
+    <p class="eyebrow">Centre map · {meta.lastUpdatedLabel}</p>
+    <h1>Irish driving test centre map</h1>
+    <p class="lede">
+      Every RSA Category B centre as a coloured dot — greener means a higher pass rate. Hover or
+      tap a centre for pass rate, tests conducted, Ireland rank, and 12-month change.
+    </p>
+
+    <div class="map-shell">
+      <div id="ireland-map" class="ireland-map" role="application" aria-label="Map of RSA driving test centres"></div>
+      <aside class="map-panel" id="map-panel" aria-live="polite">
+        <p class="map-panel__empty" id="map-empty">
+          Hover or click a centre on the map to see its figures.
+        </p>
+        <div class="map-panel__detail" id="map-detail" hidden></div>
+      </aside>
+    </div>
+
+    <div class="map-legend" aria-hidden="true">
+      <span>Lower pass rate</span>
+      <div class="map-legend__bar"></div>
+      <span>Higher pass rate</span>
+      <span class="map-legend__range">{Math.round(minRate)}% – {Math.round(maxRate)}%</span>
+    </div>
+
+    <p class="source-line">
+      Source: {meta.citationLong ?? meta.citation}. Marker positions are approximate town/centre
+      locations for visualisation. National pass rate {meta.national.passRate}%.
+    </p>
+
+    <p class="actions" style="margin-top: 1.25rem">
+      <a class="btn" href="/charts/">Open charts</a>
+      <a class="btn" href="/compare/">Compare centres</a>
+      <a class="btn" href="/">Back to tracker</a>
+    </p>
+  </section>
+
+  <DriveFlowCta href="https://www.driveflow.ie/" />
+
+  <script type="application/json" id="map-data" set:html={JSON.stringify({ ...clientPayload, minRate, maxRate })} />
+
+  <script is:inline src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const payload = JSON.parse(document.getElementById('map-data').textContent || '{}');
+    const centres = payload.centres || [];
+    const minRate = payload.minRate ?? 40;
+    const maxRate = payload.maxRate ?? 70;
+    const detail = document.getElementById('map-detail');
+    const empty = document.getElementById('map-empty');
+
+    function passColor(rate) {
+      if (rate == null) return '#9aa5a0';
+      const t = Math.max(0, Math.min(1, (rate - minRate) / (maxRate - minRate || 1)));
+      // red → amber → green
+      const stops = [
+        [155, 44, 44],
+        [138, 90, 18],
+        [12, 110, 90],
+      ];
+      const seg = t < 0.5 ? 0 : 1;
+      const local = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+      const a = stops[seg];
+      const b = stops[seg + 1];
+      const r = Math.round(a[0] + (b[0] - a[0]) * local);
+      const g = Math.round(a[1] + (b[1] - a[1]) * local);
+      const bl = Math.round(a[2] + (b[2] - a[2]) * local);
+      return `rgb(${r},${g},${bl})`;
+    }
+
+    function fmt(v, suffix = '') {
+      if (v == null || Number.isNaN(v)) return '—';
+      return `${v}${suffix}`;
+    }
+
+    function fmtCount(v) {
+      if (v == null) return '—';
+      return Number(v).toLocaleString('en-IE');
+    }
+
+    function fmtDelta(v) {
+      if (v == null) return '—';
+      return `${v > 0 ? '+' : ''}${v} pp`;
+    }
+
+    function deltaClass(v) {
+      if (v == null || v === 0) return 'delta-flat';
+      return v > 0 ? 'delta-up' : 'delta-down';
+    }
+
+    function showCentre(c) {
+      if (!detail || !empty) return;
+      empty.hidden = true;
+      detail.hidden = false;
+      detail.innerHTML = `
+        <p class="map-panel__eyebrow">${c.county} · Category B</p>
+        <h2>${c.name}</h2>
+        <dl class="map-panel__stats">
+          <div>
+            <dt>Pass rate</dt>
+            <dd style="color:${passColor(c.passRate)}">${fmt(c.passRate, '%')}</dd>
+          </div>
+          <div>
+            <dt>Tests conducted</dt>
+            <dd>${fmtCount(c.delivered)}</dd>
+          </div>
+          <div>
+            <dt>Ireland rank</dt>
+            <dd>${c.passRateRank == null ? '—' : `#${c.passRateRank}`}<span> of ${c.rankOf}</span></dd>
+          </div>
+          <div>
+            <dt>12-month change</dt>
+            <dd class="${deltaClass(c.passRate12m)}">${fmtDelta(c.passRate12m)}</dd>
+          </div>
+          <div>
+            <dt>Wait (est.)</dt>
+            <dd>${fmt(c.waitWeeks, ' weeks')}</dd>
+          </div>
+        </dl>
+        <p class="map-panel__actions">
+          <a class="btn btn--primary" href="${c.driveflowUrl}" target="_blank" rel="noopener">Routes on DriveFlow</a>
+          <a class="btn" href="/charts/?centre=${c.slug}">Charts</a>
+          <a class="btn" href="/centres/${c.slug}/">Full history</a>
+        </p>
+      `;
+      const cta = document.querySelector('.df-cta__btn');
+      if (cta) cta.setAttribute('href', c.driveflowUrl || 'https://www.driveflow.ie/');
+    }
+
+    function initMap() {
+      if (!window.L) {
+        setTimeout(initMap, 50);
+        return;
+      }
+      const mapEl = document.getElementById('ireland-map');
+      if (!mapEl) return;
+
+      const map = L.map(mapEl, {
+        scrollWheelZoom: true,
+        zoomControl: true,
+      }).setView([53.4, -8.0], 7);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 18,
+      }).addTo(map);
+
+      const bounds = [];
+      let activeMarker = null;
+
+      centres.forEach((c) => {
+        const color = passColor(c.passRate);
+        const marker = L.circleMarker([c.lat, c.lng], {
+          radius: 9,
+          color: '#fff',
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 0.92,
+          className: 'centre-dot',
+        }).addTo(map);
+
+        bounds.push([c.lat, c.lng]);
+
+        const tip = `<strong>${c.name}</strong><br>${fmt(c.passRate, '%')} · rank ${
+          c.passRateRank == null ? '—' : '#' + c.passRateRank
+        }`;
+        marker.bindTooltip(tip, {
+          direction: 'top',
+          offset: [0, -8],
+          opacity: 0.95,
+          className: 'map-tooltip',
+        });
+
+        marker.on('mouseover', () => {
+          marker.setStyle({ radius: 12, weight: 3 });
+          showCentre(c);
+        });
+        marker.on('mouseout', () => {
+          if (activeMarker !== marker) marker.setStyle({ radius: 9, weight: 2 });
+        });
+        marker.on('click', () => {
+          if (activeMarker && activeMarker !== marker) {
+            activeMarker.setStyle({ radius: 9, weight: 2 });
+          }
+          activeMarker = marker;
+          marker.setStyle({ radius: 12, weight: 3 });
+          showCentre(c);
+          map.panTo([c.lat, c.lng], { animate: true });
+        });
+      });
+
+      if (bounds.length) {
+        map.fitBounds(bounds, { padding: [36, 36], maxZoom: 8 });
+      }
+
+      // Fix grey tiles if container sized after init
+      setTimeout(() => map.invalidateSize(), 100);
+      window.addEventListener('resize', () => map.invalidateSize());
+    }
+
+    initMap();
+  </script>
+</BaseLayout>
+
+<style is:global>
+  .map-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+    gap: 1rem;
+    margin: 1.25rem 0 0.85rem;
+    align-items: stretch;
+  }
+
+  @media (max-width: 860px) {
+    .map-shell {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .ireland-map {
+    height: min(70vh, 560px);
+    min-height: 360px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #e8eeea;
+    box-shadow: var(--shadow);
+    z-index: 1;
+  }
+
+  .map-panel {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-elevated);
+    box-shadow: var(--shadow);
+    padding: 1rem 1.1rem;
+    min-height: 12rem;
+  }
+
+  .map-panel__empty {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.95rem;
+  }
+
+  .map-panel__eyebrow {
+    margin: 0 0 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  .map-panel h2 {
+    margin: 0 0 0.85rem;
+    font-size: 1.35rem;
+  }
+
+  .map-panel__stats {
+    display: grid;
+    gap: 0.65rem;
+    margin: 0;
+  }
+
+  .map-panel__stats div {
+    display: grid;
+    gap: 0.1rem;
+  }
+
+  .map-panel__stats dt {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  .map-panel__stats dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .map-panel__stats dd span {
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--ink-muted);
+    margin-left: 0.25rem;
+  }
+
+  .map-panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0 0;
+  }
+
+  .map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 0.75rem;
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+  }
+
+  .map-legend__bar {
+    width: min(14rem, 40vw);
+    height: 0.55rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #9b2c2c, #8a5a12, #0c6e5a);
+    border: 1px solid var(--line);
+  }
+
+  .map-legend__range {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+  }
+
+  .map-tooltip {
+    font-family: var(--font-body) !important;
+    font-size: 0.85rem !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 14px rgba(20, 32, 26, 0.12) !important;
+    padding: 0.35rem 0.55rem !important;
+  }
+
+  .map-tooltip::before {
+    border-top-color: var(--line) !important;
+  }
+
+  .leaflet-container {
+    font: inherit;
+  }
+</style>

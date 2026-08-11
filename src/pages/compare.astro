@@ -1,0 +1,793 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { data, explorerPayload } from '../lib/centres';
+
+const payload = explorerPayload();
+const { meta } = data;
+const defaultA =
+  payload.centres.find((c) => c.slug === 'dun-laoghaire')?.slug ?? payload.centres[0]?.slug ?? '';
+const defaultB =
+  payload.centres.find((c) => c.slug === 'tallaght')?.slug ??
+  payload.centres.find((c) => c.slug !== defaultA)?.slug ??
+  '';
+const defaultC = '';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'Compare Irish driving test centres',
+  description:
+    'Compare Category B pass rates, waiting times, tests delivered, no-shows, and abandoned tests across RSA test centres in Ireland.',
+  url: `${meta.siteUrl}/compare/`,
+  applicationCategory: 'ReferenceApplication',
+  operatingSystem: 'Any',
+  creator: {
+    '@type': 'Person',
+    name: "Liam O'Connor",
+    url: `${meta.siteUrl}/about/#author`,
+  },
+};
+---
+
+<BaseLayout
+  title={`Compare driving test centres (${meta.lastUpdatedLabel}) | Irish Driving Data`}
+  description="Compare RSA test centres side by side — pass rate, Ireland rank, waiting times, tests delivered, no-shows, abandoned tests, and 12-month change."
+  canonicalPath="/compare/"
+  jsonLd={jsonLd}
+>
+  <section
+    class="compare-page"
+    id="compare-page"
+    data-a={defaultA}
+    data-b={defaultB}
+    data-c={defaultC}
+  >
+    <p class="eyebrow">Centre compare · {meta.lastUpdatedLabel}</p>
+    <h1>Compare driving test centres</h1>
+    <p class="lede">
+      Pick two or three RSA centres and see pass rates, ranks, waits, and volumes side by side —
+      plus a trend chart for the metrics that matter most.
+    </p>
+
+    <div class="compare-pickers">
+      <label>
+        Centre A
+        <select id="compare-a"></select>
+      </label>
+      <label>
+        Centre B
+        <select id="compare-b"></select>
+      </label>
+      <label>
+        Centre C <span class="optional">(optional)</span>
+        <select id="compare-c">
+          <option value="">None</option>
+        </select>
+      </label>
+    </div>
+
+    <p class="source-line" id="compare-source">
+      Source: {meta.citationLong ?? meta.citation}. Snapshot {meta.lastUpdatedLabel}.
+    </p>
+
+    <div class="table-wrap compare-table-wrap">
+      <table class="stats compare-table" id="compare-table">
+        <caption class="sr-only">Side-by-side centre comparison</caption>
+        <thead id="compare-thead"></thead>
+        <tbody id="compare-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="compare-charts">
+      <figure class="chart-panel">
+        <figcaption>
+          <h2>Pass rate over time</h2>
+          <p>Monthly Category B pass rate for the selected centres vs the national average.</p>
+        </figcaption>
+        <div class="chart-wrap">
+          <canvas id="compare-pass-chart" width="900" height="300" aria-label="Pass rate comparison chart"></canvas>
+        </div>
+        <div class="chart-legend" id="compare-pass-legend"></div>
+      </figure>
+
+      <figure class="chart-panel">
+        <figcaption>
+          <h2>Waiting time over time</h2>
+          <p>Estimated weeks to a test invite for each selected centre.</p>
+        </figcaption>
+        <div class="chart-wrap">
+          <canvas id="compare-wait-chart" width="900" height="280" aria-label="Waiting time comparison chart"></canvas>
+        </div>
+        <div class="chart-legend" id="compare-wait-legend"></div>
+      </figure>
+    </div>
+
+    <p class="actions" style="margin-top: 1.5rem">
+      <a class="btn" href="/charts/">Open charts</a>
+      <a class="btn" href="/">Back to tracker</a>
+    </p>
+  </section>
+
+  <div class="chart-tooltip" id="compare-tooltip" hidden role="tooltip"></div>
+  <script type="application/json" id="compare-data" set:html={JSON.stringify(payload)} />
+
+  <script>
+    const payload = JSON.parse(document.getElementById('compare-data').textContent || '{}');
+    const centres = payload.centres || [];
+    const bySlug = Object.fromEntries(centres.map((c) => [c.slug, c]));
+    const nationalHistory = payload.meta?.nationalHistory || [];
+    const nationalByPeriod = Object.fromEntries(nationalHistory.map((h) => [h.period, h]));
+    const national = payload.meta?.national || {};
+
+    const root = document.getElementById('compare-page');
+    const selA = document.getElementById('compare-a');
+    const selB = document.getElementById('compare-b');
+    const selC = document.getElementById('compare-c');
+    const thead = document.getElementById('compare-thead');
+    const tbody = document.getElementById('compare-tbody');
+    const sourceEl = document.getElementById('compare-source');
+    const tooltip = document.getElementById('compare-tooltip');
+
+    const COLORS = ['#0c6e5a', '#8a5a12', '#3d5a80', '#9b2c2c'];
+    const NAT = '#6b7280';
+
+    function fillSelects() {
+      for (const sel of [selA, selB, selC]) {
+        if (!sel) continue;
+        const keepNone = sel === selC;
+        const current = sel.value;
+        sel.innerHTML = keepNone ? '<option value="">None</option>' : '';
+        for (const c of centres) {
+          const opt = document.createElement('option');
+          opt.value = c.slug;
+          opt.textContent = `${c.name} (${c.county})`;
+          sel.appendChild(opt);
+        }
+        if (current) sel.value = current;
+      }
+    }
+
+    function selected() {
+      const slugs = [selA?.value, selB?.value, selC?.value].filter(Boolean);
+      const unique = [...new Set(slugs)];
+      return unique.map((s) => bySlug[s]).filter(Boolean);
+    }
+
+    function fmt(v, suffix = '') {
+      if (v == null || Number.isNaN(v)) return '—';
+      return `${v}${suffix}`;
+    }
+
+    function fmtCount(v) {
+      if (v == null) return '—';
+      return Number(v).toLocaleString('en-IE');
+    }
+
+    function fmtDelta(v, unit) {
+      if (v == null) return '—';
+      const sign = v > 0 ? '+' : '';
+      if (unit === 'pp') return `${sign}${v} pp`;
+      if (unit === 'w') return `${sign}${v} w`;
+      return `${sign}${v}`;
+    }
+
+    function deltaClass(v) {
+      if (v == null || v === 0) return 'delta-flat';
+      return v > 0 ? 'delta-up' : 'delta-down';
+    }
+
+    function shortPeriod(period) {
+      const [y, m] = period.split('-');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${months[Number(m) - 1]} ${y.slice(2)}`;
+    }
+
+    function longPeriod(period) {
+      const [y, m] = period.split('-').map(Number);
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      return `${months[m - 1]} ${y}`;
+    }
+
+    function renderTable(list) {
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+      if (!list.length) return;
+
+      const head = document.createElement('tr');
+      const metricTh = document.createElement('th');
+      metricTh.scope = 'col';
+      metricTh.textContent = 'Metric';
+      head.appendChild(metricTh);
+      list.forEach((c, i) => {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.innerHTML = `<a href="/centres/${c.slug}/">${c.name}</a><span class="compare-county">${c.county}</span>`;
+        th.style.borderTop = `3px solid ${COLORS[i % COLORS.length]}`;
+        head.appendChild(th);
+      });
+      if (list.length === 2) {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = 'Difference (A − B)';
+        head.appendChild(th);
+      }
+      thead.appendChild(head);
+
+      const rows = [
+        {
+          label: 'Pass rate',
+          values: list.map((c) => fmt(c.passRate, '%')),
+          raw: list.map((c) => c.passRate),
+          unit: 'pp',
+          better: 'higher',
+        },
+        {
+          label: 'vs national pass rate',
+          values: list.map((c) => {
+            if (c.passRate == null || national.passRate == null) return '—';
+            return fmtDelta(Math.round((c.passRate - national.passRate) * 10) / 10, 'pp');
+          }),
+          raw: list.map((c) =>
+            c.passRate == null || national.passRate == null
+              ? null
+              : Math.round((c.passRate - national.passRate) * 10) / 10,
+          ),
+          unit: 'pp',
+          better: 'higher',
+        },
+        {
+          label: 'Ireland rank (pass rate)',
+          values: list.map((c) => (c.passRateRank == null ? '—' : `#${c.passRateRank} of ${c.rankOf}`)),
+          raw: list.map((c) => c.passRateRank),
+          unit: 'n',
+          better: 'lower',
+        },
+        {
+          label: 'Waiting weeks',
+          values: list.map((c) => fmt(c.waitWeeks)),
+          raw: list.map((c) => c.waitWeeks),
+          unit: 'w',
+          better: 'lower',
+        },
+        {
+          label: '12-month pass change',
+          values: list.map((c) => fmtDelta(c.passRate12m, 'pp')),
+          raw: list.map((c) => c.passRate12m),
+          unit: 'pp',
+          better: 'higher',
+        },
+        {
+          label: '12-month wait change',
+          values: list.map((c) => fmtDelta(c.waitWeeks12m, 'w')),
+          raw: list.map((c) => c.waitWeeks12m),
+          unit: 'w',
+          better: 'lower',
+        },
+        {
+          label: 'Tests delivered',
+          values: list.map((c) => fmtCount(c.delivered)),
+          raw: list.map((c) => c.delivered),
+          unit: 'n',
+          better: null,
+        },
+        {
+          label: 'No-shows',
+          values: list.map((c) => fmtCount(c.noShow)),
+          raw: list.map((c) => c.noShow),
+          unit: 'n',
+          better: 'lower',
+        },
+        {
+          label: 'Abandoned',
+          values: list.map((c) => fmtCount(c.abandoned)),
+          raw: list.map((c) => c.abandoned),
+          unit: 'n',
+          better: 'lower',
+        },
+      ];
+
+      for (const row of rows) {
+        const tr = document.createElement('tr');
+        const th = document.createElement('th');
+        th.scope = 'row';
+        th.textContent = row.label;
+        tr.appendChild(th);
+
+        const bestIdx = (() => {
+          if (!row.better) return -1;
+          const nums = row.raw.map((v, i) => ({ v, i })).filter((x) => x.v != null);
+          if (!nums.length) return -1;
+          nums.sort((a, b) => (row.better === 'higher' ? b.v - a.v : a.v - b.v));
+          return nums[0].i;
+        })();
+
+        row.values.forEach((val, i) => {
+          const td = document.createElement('td');
+          td.className = 'num';
+          if (i === bestIdx && list.length > 1) td.classList.add('compare-best');
+          if (row.label.includes('change') || row.label.includes('vs national')) {
+            td.classList.add(deltaClass(row.raw[i]));
+          }
+          td.textContent = val;
+          tr.appendChild(td);
+        });
+
+        if (list.length === 2) {
+          const a = row.raw[0];
+          const b = row.raw[1];
+          const td = document.createElement('td');
+          td.className = 'num';
+          if (a == null || b == null) {
+            td.textContent = '—';
+          } else if (row.label.includes('rank')) {
+            const d = a - b;
+            td.textContent = d === 0 ? 'Same' : d < 0 ? `${Math.abs(d)} places higher` : `${d} places lower`;
+            td.classList.add(d === 0 ? 'delta-flat' : d < 0 ? 'delta-up' : 'delta-down');
+          } else {
+            const d = Math.round((a - b) * 10) / 10;
+            td.textContent = fmtDelta(d, row.unit === 'pp' ? 'pp' : row.unit === 'w' ? 'w' : 'n');
+            td.classList.add(deltaClass(d));
+          }
+          tr.appendChild(td);
+        }
+
+        tbody.appendChild(tr);
+      }
+
+      if (sourceEl) {
+        const names = list.map((c) => c.name).join(' vs ');
+        sourceEl.innerHTML = `Comparing <strong>${names}</strong>. National pass rate ${fmt(national.passRate, '%')}, wait ${fmt(national.waitWeeks)} weeks (${payload.meta?.lastUpdatedLabel || ''}). Source: CSO ROA30 / ROA36.`;
+      }
+    }
+
+    function setupCanvas(id) {
+      const canvas = document.getElementById(id);
+      if (!canvas) return null;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      const cssW = Math.max(Math.round(rect.width) || 320, 320);
+      const intrinsicH = Number(canvas.getAttribute('height')) || 300;
+      const intrinsicW = Number(canvas.getAttribute('width')) || 900;
+      const cssH = Math.round(intrinsicH * (cssW / intrinsicW));
+      canvas.style.width = '100%';
+      canvas.style.height = `${cssH}px`;
+      const need =
+        canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr);
+      if (need) {
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { canvas, ctx, w: cssW, h: cssH };
+    }
+
+    function showTooltip(html, clientX, clientY) {
+      if (!tooltip) return;
+      tooltip.innerHTML = html;
+      tooltip.hidden = false;
+      const pad = 14;
+      let left = clientX + pad;
+      let top = clientY + pad;
+      const tw = tooltip.offsetWidth;
+      const th = tooltip.offsetHeight;
+      if (left + tw > window.innerWidth - 8) left = clientX - tw - pad;
+      if (top + th > window.innerHeight - 8) top = clientY - th - pad;
+      tooltip.style.left = `${Math.max(8, left)}px`;
+      tooltip.style.top = `${Math.max(8, top)}px`;
+    }
+
+    function hideTooltip() {
+      if (tooltip) tooltip.hidden = true;
+    }
+
+    const chartHover = {};
+
+    function bindHover(id, hitTest, redraw) {
+      const canvas = document.getElementById(id);
+      if (!canvas || canvas.dataset.bound) return;
+      canvas.dataset.bound = '1';
+      canvas.style.cursor = 'crosshair';
+      canvas.addEventListener('mousemove', (evt) => {
+        const state = chartHover[id];
+        if (!state) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = ((evt.clientX - rect.left) / Math.max(rect.width, 1)) * state.w;
+        const hit = hitTest(x);
+        chartHover[id].hover = hit;
+        redraw(hit);
+        if (hit?.html) showTooltip(hit.html, evt.clientX, evt.clientY);
+        else hideTooltip();
+      });
+      canvas.addEventListener('mouseleave', () => {
+        chartHover[id].hover = null;
+        redraw(null);
+        hideTooltip();
+      });
+    }
+
+    function drawLineChart(id, list, key, legendId, unitSuffix) {
+      const setup = setupCanvas(id);
+      if (!setup) return;
+      const { canvas, ctx, w, h } = setup;
+      const hover = chartHover[id]?.hover || null;
+      ctx.clearRect(0, 0, w, h);
+      const pad = { t: 16, r: 16, b: 36, l: 44 };
+
+      const periodSet = new Set();
+      list.forEach((c) => {
+        (c.history || []).forEach((p) => {
+          if (p[key] != null) periodSet.add(p.period);
+        });
+      });
+      nationalHistory.forEach((p) => {
+        if (p[key] != null) periodSet.add(p.period);
+      });
+      const periods = [...periodSet].sort();
+      if (periods.length < 2) {
+        ctx.fillStyle = '#4a5a52';
+        ctx.font = '14px "Source Sans 3", sans-serif';
+        ctx.fillText('Not enough history to chart.', pad.l, h / 2);
+        return;
+      }
+
+      const series = list.map((c, i) => ({
+        name: c.name,
+        color: COLORS[i % COLORS.length],
+        values: periods.map((period) => {
+          const hit = (c.history || []).find((h) => h.period === period);
+          return hit?.[key] ?? null;
+        }),
+      }));
+      const natValues = periods.map((p) => nationalByPeriod[p]?.[key] ?? null);
+      const allVals = [...series.flatMap((s) => s.values), ...natValues].filter((v) => v != null);
+      if (!allVals.length) return;
+      const min = Math.min(...allVals) - (key === 'passRate' ? 2 : 1);
+      const max = Math.max(...allVals) + (key === 'passRate' ? 2 : 1);
+      const plotW = w - pad.l - pad.r;
+      const plotH = h - pad.t - pad.b;
+
+      // grid
+      for (let i = 0; i <= 4; i++) {
+        const t = i / 4;
+        const y = pad.t + t * plotH;
+        const v = max - t * (max - min);
+        ctx.strokeStyle = 'rgba(20,32,26,0.08)';
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(w - pad.r, y);
+        ctx.stroke();
+        ctx.fillStyle = '#4a5a52';
+        ctx.font = '12px "IBM Plex Mono", monospace';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(key === 'passRate' ? `${v.toFixed(0)}%` : `${v.toFixed(0)}w`, pad.l - 8, y);
+      }
+      ctx.strokeStyle = '#d5ddd7';
+      ctx.beginPath();
+      ctx.moveTo(pad.l, pad.t);
+      ctx.lineTo(pad.l, h - pad.b);
+      ctx.lineTo(w - pad.r, h - pad.b);
+      ctx.stroke();
+
+      function ptsFor(values) {
+        return periods
+          .map((period, i) => {
+            const v = values[i];
+            if (v == null) return null;
+            return {
+              period,
+              v,
+              x: pad.l + (i / (periods.length - 1)) * plotW,
+              y: pad.t + ((max - v) / (max - min || 1)) * plotH,
+            };
+          })
+          .filter(Boolean);
+      }
+
+      if (hover) {
+        ctx.strokeStyle = 'rgba(20,32,26,0.28)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(hover.x, pad.t);
+        ctx.lineTo(hover.x, h - pad.b);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      function strokeSeries(pts, color) {
+        if (pts.length < 2) return;
+        ctx.beginPath();
+        pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.25;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+
+      const natPts = ptsFor(natValues);
+      strokeSeries(natPts, NAT);
+      const seriesPts = series.map((s) => ({ ...s, pts: ptsFor(s.values) }));
+      seriesPts.forEach((s) => strokeSeries(s.pts, s.color));
+
+      if (hover) {
+        [...seriesPts, { color: NAT, pts: natPts }].forEach((s) => {
+          const p = s.pts.find((pt) => pt.period === hover.period);
+          if (!p) return;
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        });
+      }
+
+      ctx.fillStyle = '#4a5a52';
+      ctx.font = '11px "IBM Plex Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const every = Math.ceil(periods.length / 8);
+      periods.forEach((p, i) => {
+        if (i % every && i !== periods.length - 1) return;
+        const x = pad.l + (i / (periods.length - 1)) * plotW;
+        ctx.fillText(shortPeriod(p), x, h - pad.b + 8);
+      });
+
+      const legend = document.getElementById(legendId);
+      if (legend) {
+        legend.innerHTML =
+          series
+            .map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`)
+            .join('') + `<span><i style="background:${NAT}"></i>National</span>`;
+      }
+
+      chartHover[id] = {
+        w,
+        h,
+        hover: chartHover[id]?.hover || null,
+      };
+
+      bindHover(
+        id,
+        (mx) => {
+          let bestI = 0;
+          let bestD = Infinity;
+          periods.forEach((_, i) => {
+            const x = pad.l + (i / (periods.length - 1)) * plotW;
+            const d = Math.abs(x - mx);
+            if (d < bestD) {
+              bestD = d;
+              bestI = i;
+            }
+          });
+          if (bestD > plotW / periods.length + 14) return null;
+          const period = periods[bestI];
+          const x = pad.l + (bestI / (periods.length - 1)) * plotW;
+          const lines = series
+            .map((s) => {
+              const v = s.values[bestI];
+              return `<div>${s.name}: <b>${v == null ? '—' : v + unitSuffix}</b></div>`;
+            })
+            .join('');
+          const nat = natValues[bestI];
+          return {
+            period,
+            x,
+            html: `<strong>${longPeriod(period)}</strong>${lines}<div>National: <b>${nat == null ? '—' : nat + unitSuffix}</b></div>`,
+          };
+        },
+        (hit) => {
+          chartHover[id].hover = hit;
+          drawLineChart(id, list, key, legendId, unitSuffix);
+        },
+      );
+    }
+
+    function render() {
+      hideTooltip();
+      const list = selected();
+      renderTable(list);
+      drawLineChart('compare-pass-chart', list, 'passRate', 'compare-pass-legend', '%');
+      drawLineChart('compare-wait-chart', list, 'waitWeeks', 'compare-wait-legend', ' weeks');
+
+      const url = new URL(window.location.href);
+      if (selA?.value) url.searchParams.set('a', selA.value);
+      if (selB?.value) url.searchParams.set('b', selB.value);
+      if (selC?.value) url.searchParams.set('c', selC.value);
+      else url.searchParams.delete('c');
+      window.history.replaceState({}, '', url);
+    }
+
+    function init() {
+      fillSelects();
+      const params = new URLSearchParams(window.location.search);
+      const a = params.get('a') || root?.dataset.a || '';
+      const b = params.get('b') || root?.dataset.b || '';
+      const c = params.get('c') || root?.dataset.c || '';
+      if (selA && a && bySlug[a]) selA.value = a;
+      if (selB && b && bySlug[b]) selB.value = b;
+      if (selC) selC.value = c && bySlug[c] ? c : '';
+      render();
+    }
+
+    selA?.addEventListener('change', render);
+    selB?.addEventListener('change', render);
+    selC?.addEventListener('change', render);
+    window.addEventListener('resize', render);
+    init();
+  </script>
+</BaseLayout>
+
+<style is:global>
+  .compare-pickers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+    margin: 1.25rem 0 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-elevated);
+    box-shadow: var(--shadow);
+  }
+
+  @media (max-width: 720px) {
+    .compare-pickers {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .compare-pickers label {
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+    min-width: 0;
+  }
+
+  .compare-pickers .optional {
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .compare-pickers select {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    font: inherit;
+    font-size: 1rem;
+    color: var(--ink);
+    padding: 0.55rem 2rem 0.55rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fff;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a5a52' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+  }
+
+  .compare-table-wrap {
+    margin-top: 1.25rem;
+  }
+
+  .compare-table th .compare-county,
+  .compare-county {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--ink-muted);
+    margin-top: 0.2rem;
+  }
+
+  .compare-best {
+    background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+    font-weight: 600;
+  }
+
+  .compare-charts {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 1.75rem;
+  }
+
+  .compare-charts .chart-panel {
+    margin: 0;
+    padding: 1.1rem 1.15rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-elevated);
+    box-shadow: var(--shadow);
+  }
+
+  .compare-charts .chart-panel figcaption h2 {
+    margin: 0 0 0.25rem;
+    font-size: 1.2rem;
+  }
+
+  .compare-charts .chart-panel figcaption p {
+    margin: 0 0 0.85rem;
+    color: var(--ink-muted);
+    font-size: 0.95rem;
+  }
+
+  .compare-charts .chart-wrap {
+    position: relative;
+  }
+
+  .compare-charts canvas {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .compare-charts .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.15rem;
+    margin-top: 0.65rem;
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+  }
+
+  .compare-charts .chart-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .compare-charts .chart-legend i {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 2px;
+  }
+
+  .chart-tooltip {
+    position: fixed;
+    z-index: 50;
+    min-width: 10rem;
+    max-width: 18rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(20, 32, 26, 0.14);
+    color: var(--ink);
+    font-size: 0.86rem;
+    line-height: 1.4;
+    pointer-events: none;
+  }
+
+  .chart-tooltip[hidden] {
+    display: none !important;
+  }
+
+  .chart-tooltip strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>

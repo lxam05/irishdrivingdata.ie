@@ -1,0 +1,23 @@
+{
+  "name": "irishdrivingdata",
+  "type": "module",
+  "version": "0.2.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "npm run export && astro dev",
+    "export": "node scripts/export-data.mjs",
+    "fetch-cso": "python3 scripts/fetch_cso.py",
+    "compile-cso": "python3 scripts/compile_from_cso_full.py",
+    "data": "npm run fetch-cso && npm run compile-cso && npm run export",
+    "build": "npm run export && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.3",
+    "astro": "^7.2.0"
+  }
+}

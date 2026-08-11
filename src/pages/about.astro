@@ -1,0 +1,128 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { data } from '../lib/centres';
+
+const { meta } = data;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'AboutPage',
+  name: 'About & methodology — Irish Driving Data',
+  url: `${meta.siteUrl}/about/`,
+  author: {
+    '@type': 'Person',
+    name: "Liam O'Connor",
+    url: `${meta.siteUrl}/about/#author`,
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Irish Driving Data',
+    url: meta.siteUrl,
+  },
+};
+---
+
+<BaseLayout
+  title="About & methodology | Irish Driving Data"
+  description="How Irish Driving Data collects RSA Category B pass rates and waiting times from CSO statistics, how often we update, and who maintains the site."
+  canonicalPath="/about/"
+  jsonLd={jsonLd}
+>
+  <p class="eyebrow">Trust & provenance</p>
+  <h1>About & methodology</h1>
+  <p class="lede">
+    Irish Driving Data is a free tracker of Category B driving test pass rates
+    and estimated waiting times for RSA test centres in Ireland. It exists so
+    learners, instructors, journalists, and developers can cite current figures
+    without scraping HTML.
+  </p>
+
+  <div class="prose">
+    <h2>Data sources &amp; coverage</h2>
+    <p>
+      Figures come from CSO PxStat on{' '}
+      <a href="https://data.cso.ie/">data.cso.ie</a> and{' '}
+      <a href="https://data.gov.ie">data.gov.ie</a>, published on behalf of the Road
+      Safety Authority (RSA). License: Creative Commons Attribution 4.0.
+    </p>
+    <ul>
+      <li>
+        <strong>ROA30</strong> — pass rates, tests delivered, and tests not conducted /
+        abandoned by centre
+      </li>
+      <li>
+        <strong>ROA36</strong> — estimated waiting time (weeks) to a driving test invite at
+        month end
+      </li>
+    </ul>
+    <p>
+      This site loads the full Category B monthly series from CSO (currently January 2021
+      through the latest published month). Pass rates and abandoned counts come from ROA30;
+      waiting times from ROA36 (available from September 2021).
+    </p>
+    <p class="source-line">
+      Current site snapshot: {meta.citationLong ?? meta.citation}. Data refreshed{' '}
+      {meta.lastUpdated} from CSO PxStat CSV exports.
+    </p>
+
+    <h2>Comparing centres &amp; periods</h2>
+    <p>On this site you can:</p>
+    <ul>
+      <li><strong>Tracker</strong> — latest month for every centre: pass rate, wait, tests delivered, no-shows, and abandoned</li>
+      <li><strong>Compare</strong> — put two or three centres side by side with ranks, 12-month change, and trend charts</li>
+      <li><strong>Charts</strong> — explore one centre in depth with national ranking and history charts</li>
+      <li><strong>Map</strong> — interactive Ireland map with centres coloured by pass rate</li>
+    </ul>
+    <p>
+      Centre pages show the full monthly history table and a pass-rate trend chart. Download
+      the complete dataset as <a href="/data/latest.json">JSON</a> (includes all months per
+      centre).
+    </p>
+
+    <h2>What the numbers mean</h2>
+    <p>
+      <strong>Pass rate</strong> is the Category B pass percentage published for
+      that centre in the CSO release. Where a centre has no published figure for
+      the month, we show “Not published” — we do not invent values.
+    </p>
+    <p>
+      <strong>Waiting time</strong> is the CSO’s estimated weeks to a test invite
+      at month end. It is <em>not</em> a live feed of MyRoadSafety appointment
+      slots. Always confirm booking availability on the RSA / MyRoadSafety
+      service.
+    </p>
+    <p>
+      <strong>Tests delivered</strong> is the count of Category B driving tests
+      conducted that month (ROA30). <strong>No-shows</strong> are candidates who
+      did not attend their booked test. <strong>Abandoned</strong> tests are those
+      not conducted / abandoned before completion (ROA30).
+    </p>
+
+    <h2>Update cadence</h2>
+    <p>
+      CSO publishes driving-test statistics monthly. Re-run{' '}
+      <code>npm run data</code> to fetch the latest CSO CSVs and rebuild the site.
+    </p>
+
+    <h2>Reuse & citation</h2>
+    <p>
+      Download the same dataset as
+      <a href="/data/latest.csv">CSV</a> or
+      <a href="/data/latest.json">JSON</a>. Embed a compact centre card with our
+      <a href="/embed-demo/">embed snippet</a>. Please credit Irish Driving Data
+      and the underlying CSO / RSA sources.
+    </p>
+
+    <h2 id="author">Who maintains this</h2>
+    <p>
+      Written and maintained by <strong>Liam O'Connor</strong>. The project is
+      maintained by <a href="https://www.driveflow.ie">DriveFlow</a>, which also
+      publishes Google Maps practice routes for RSA centres. Irish Driving Data
+      is a separate, free resource — it is not a substitute for official RSA
+      advice.
+    </p>
+    <p>
+      Questions or corrections:
+      <a href="mailto:driveflowweb@gmail.com">driveflowweb@gmail.com</a>.
+    </p>
+  </div>
+</BaseLayout>

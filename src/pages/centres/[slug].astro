@@ -1,0 +1,224 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Sparkline from '../../components/Sparkline.astro';
+import DriveFlowCta from '../../components/DriveFlowCta.astro';
+import {
+  allCentresWithTrends,
+  data,
+  formatCount,
+  formatDelta,
+  formatPeriod,
+} from '../../lib/centres';
+
+export function getStaticPaths() {
+  return allCentresWithTrends().map((centre) => ({
+    params: { slug: centre.slug },
+    props: { centre },
+  }));
+}
+
+const { centre } = Astro.props;
+const { meta } = data;
+const passText =
+  centre.passRate === null ? 'not published' : `${centre.passRate}%`;
+const waitText =
+  centre.waitWeeks === null ? 'not published' : `${centre.waitWeeks} weeks`;
+
+const title = `${centre.name} driving test statistics (${meta.lastUpdatedLabel})`;
+const description = `${centre.name} (${centre.county}): Category B pass rate ${passText}, wait ${waitText}, ${formatCount(centre.delivered)} tests delivered, ${formatCount(centre.noShow)} no-shows, ${formatCount(centre.abandoned)} abandoned. Full CSO history from ${data.meta.periods?.[0]?.label ?? ''}.`;
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: title,
+    description,
+    url: `${meta.siteUrl}/centres/${centre.slug}/`,
+    dateModified: meta.lastUpdated,
+    author: {
+      '@type': 'Person',
+      name: "Liam O'Connor",
+      url: `${meta.siteUrl}/about/#author`,
+    },
+    isPartOf: {
+      '@type': 'WebSite',
+      name: meta.siteName ?? 'Irish Driving Data',
+      url: meta.siteUrl,
+    },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Tracker',
+        item: meta.siteUrl,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: centre.name,
+        item: `${meta.siteUrl}/centres/${centre.slug}/`,
+      },
+    ],
+  },
+];
+
+function trendClass(delta: number | null): string {
+  if (delta === null || delta === 0) return 'delta-flat';
+  return delta > 0 ? 'delta-up' : 'delta-down';
+}
+---
+
+<BaseLayout
+  title={`${title} | Irish Driving Data`}
+  description={description}
+  canonicalPath={`/centres/${centre.slug}/`}
+  jsonLd={jsonLd}
+>
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumb">
+      <li><a href="/">Tracker</a> /</li>
+      <li aria-current="page">{centre.name}</li>
+    </ol>
+  </nav>
+
+  <p class="eyebrow">{centre.county} · Category B</p>
+  <h1>{centre.name} driving test statistics</h1>
+  <p class="lede">
+    Latest CSO / RSA figures for the {centre.name} test centre
+    ({centre.csoName}), plus full monthly history.
+  </p>
+
+  <div class="stats-grid">
+    <div class="stat">
+      <p class="stat__label">Pass rate</p>
+      <p class="stat__value">
+        {centre.passRate === null ? '—' : `${centre.passRate}%`}
+      </p>
+      <p class={`stat__note ${trendClass(centre.passRateDelta)}`}>
+        vs prev month: {formatDelta(centre.passRateDelta, 'pp')}
+      </p>
+    </div>
+    <div class="stat">
+      <p class="stat__label">Wait (est.)</p>
+      <p class="stat__value">
+        {centre.waitWeeks === null ? '—' : `${centre.waitWeeks}w`}
+      </p>
+      <p class={`stat__note ${trendClass(centre.waitWeeksDelta)}`}>
+        vs prev month: {formatDelta(centre.waitWeeksDelta, 'w')}
+      </p>
+    </div>
+    <div class="stat">
+      <p class="stat__label">Tests delivered</p>
+      <p class="stat__value">
+        {centre.delivered === null ? '—' : centre.delivered.toLocaleString('en-IE')}
+      </p>
+      <p class={`stat__note ${trendClass(centre.deliveredDelta)}`}>
+        vs prev month: {formatDelta(centre.deliveredDelta, 'n')}
+      </p>
+    </div>
+    <div class="stat">
+      <p class="stat__label">No-shows</p>
+      <p class="stat__value">
+        {centre.noShow === null ? '—' : centre.noShow.toLocaleString('en-IE')}
+      </p>
+      <p class={`stat__note ${trendClass(centre.noShowDelta)}`}>
+        vs prev month: {formatDelta(centre.noShowDelta, 'n')}
+      </p>
+    </div>
+    <div class="stat">
+      <p class="stat__label">Abandoned</p>
+      <p class="stat__value">
+        {centre.abandoned === null ? '—' : centre.abandoned.toLocaleString('en-IE')}
+      </p>
+      <p class={`stat__note ${trendClass(centre.abandonedDelta)}`}>
+        vs prev month: {formatDelta(centre.abandonedDelta, 'n')}
+      </p>
+    </div>
+  </div>
+
+  <p class="source-line">
+    Source: {meta.citationLong ?? meta.citation}. Updated {meta.lastUpdatedLabel}.
+    Waiting times are estimated weeks to invite at month end, not live booking
+    availability.
+  </p>
+
+  <section class="panel" aria-labelledby="history-heading">
+    <h2 id="history-heading">Full monthly history</h2>
+    <p class="muted" style="margin-top:0">
+      {centre.history.length} months of CSO data from {formatPeriod(centre.history[0]?.period ?? '')} to {formatPeriod(centre.history[centre.history.length - 1]?.period ?? '')}.
+    </p>
+    <Sparkline
+      values={centre.history.map((h) => h.passRate)}
+      label={`${centre.name} pass rate over time`}
+    />
+    <div class="table-wrap history-scroll" style="margin-top: 1rem; border: 0; box-shadow: none; max-height: 28rem;">
+      <table class="stats">
+        <thead>
+          <tr>
+            <th scope="col">Period</th>
+            <th scope="col">Pass rate %</th>
+            <th scope="col">Wait (weeks)</th>
+            <th scope="col">Delivered</th>
+            <th scope="col">No-shows</th>
+            <th scope="col">Abandoned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            [...centre.history].reverse().map((h) => (
+              <tr>
+                <th scope="row">{formatPeriod(h.period)}</th>
+                <td class="num">
+                  {h.passRate === null ? (
+                    <span class="muted">Not published</span>
+                  ) : (
+                    h.passRate
+                  )}
+                </td>
+                <td class="num">
+                  {h.waitWeeks === null ? (
+                    <span class="muted">Not published</span>
+                  ) : (
+                    h.waitWeeks
+                  )}
+                </td>
+                <td class="num">
+                  {h.delivered == null ? (
+                    <span class="muted">Not published</span>
+                  ) : (
+                    h.delivered
+                  )}
+                </td>
+                <td class="num">
+                  {h.noShow == null ? (
+                    <span class="muted">Not published</span>
+                  ) : (
+                    h.noShow
+                  )}
+                </td>
+                <td class="num">
+                  {h.abandoned == null ? (
+                    <span class="muted">Not published</span>
+                  ) : (
+                    h.abandoned
+                  )}
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <DriveFlowCta href={centre.driveflowUrl} centreName={centre.name} />
+
+  <p class="byline">
+    Written by <a href="/about/#author">Liam O'Connor</a>. Statistics last
+    updated {meta.lastUpdatedLabel}.
+  </p>
+</BaseLayout>

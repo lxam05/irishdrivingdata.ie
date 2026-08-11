@@ -1,0 +1,219 @@
+---
+interface Props {
+  /** Destination for the CTA — centre routes URL or DriveFlow home. */
+  href?: string;
+  /** Optional centre name for slightly tailored body copy. */
+  centreName?: string;
+}
+
+const {
+  href = 'https://www.driveflow.ie/',
+  centreName,
+} = Astro.props;
+
+const body = centreName
+  ? `DriveFlow helps Irish learner drivers prepare for ${centreName} with everything you need to pass with confidence.`
+  : 'DriveFlow helps Irish learner drivers prepare with everything you need to pass with confidence.';
+---
+
+<section class="df-cta" aria-labelledby="df-cta-heading">
+  <div class="df-cta__inner">
+    <div class="df-cta__copy">
+      <div class="df-cta__brand">
+        <img
+          class="df-cta__logo"
+          src="/images/driveflow-logo.jpg"
+          alt=""
+          width="40"
+          height="40"
+          decoding="async"
+        />
+        <span class="df-cta__brand-name">DriveFlow</span>
+      </div>
+
+      <h2 id="df-cta-heading" class="df-cta__title">
+        Know the stats.<br />
+        <span>Now prepare for the test.</span>
+      </h2>
+
+      <p class="df-cta__lede">{body}</p>
+
+      <ul class="df-cta__features">
+        <li>Driving test routes</li>
+        <li>Test-centre information</li>
+        <li>Driving test guides</li>
+        <li>Resources for test day</li>
+      </ul>
+
+      <a class="df-cta__btn" href={href} target="_blank" rel="noopener">
+        Prepare with DriveFlow <span aria-hidden="true">→</span>
+      </a>
+    </div>
+
+    <div class="df-cta__visual">
+      <img
+        src="/images/driveflow-phones.jpg"
+        alt="DriveFlow app screens showing driving test routes, practice tools, and test-day guides"
+        width="1024"
+        height="682"
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+  </div>
+</section>
+
+<style>
+  .df-cta {
+    --df-blue: #2563eb;
+    --df-blue-ink: #1d4ed8;
+    --df-ink: #0f172a;
+    --df-muted: #475569;
+    margin: 2.5rem 0 0;
+  }
+
+  .df-cta__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.15fr);
+    gap: 1.5rem 2rem;
+    align-items: center;
+    padding: 1.75rem 1.5rem;
+    border: 1px solid #dbe3f0;
+    border-radius: 18px;
+    background:
+      radial-gradient(520px 280px at 85% 40%, rgba(37, 99, 235, 0.10), transparent 65%),
+      #ffffff;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+  }
+
+  @media (max-width: 860px) {
+    .df-cta__inner {
+      grid-template-columns: 1fr;
+      padding: 1.35rem 1.15rem 1.15rem;
+    }
+  }
+
+  .df-cta__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+
+  .df-cta__logo {
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 0.55rem;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  }
+
+  .df-cta__brand-name {
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--df-ink);
+    letter-spacing: -0.02em;
+  }
+
+  .df-cta__title {
+    margin: 0 0 0.75rem;
+    font-family: var(--font-body);
+    font-size: clamp(1.55rem, 3vw, 2rem);
+    font-weight: 750;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--df-ink);
+  }
+
+  .df-cta__title span {
+    color: var(--df-blue);
+  }
+
+  .df-cta__lede {
+    margin: 0 0 1rem;
+    max-width: 28rem;
+    color: var(--df-muted);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+
+  .df-cta__features {
+    margin: 0 0 1.35rem;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .df-cta__features li {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--df-ink);
+    font-size: 0.98rem;
+    font-weight: 500;
+  }
+
+  .df-cta__features li::before {
+    content: '';
+    width: 1.2rem;
+    height: 1.2rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23fff' d='M6.5 11.2 3.3 8l1.1-1.1 2.1 2.1 4.6-4.6L12.2 5.5z'/%3E%3C/svg%3E")
+      center / 0.75rem no-repeat,
+      var(--df-blue);
+  }
+
+  .df-cta__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.8rem 1.25rem;
+    border-radius: 999px;
+    background: var(--df-blue);
+    color: #fff !important;
+    font-weight: 650;
+    font-size: 1rem;
+    text-decoration: none;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28);
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+
+  .df-cta__btn:hover {
+    background: var(--df-blue-ink);
+    color: #fff !important;
+    transform: translateY(-1px);
+  }
+
+  .df-cta__btn span {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .df-cta__visual {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 14rem;
+    background: #fff;
+    border-radius: 12px;
+  }
+
+  .df-cta__visual img {
+    display: block;
+    width: 100%;
+    max-width: 32rem;
+    height: auto;
+  }
+
+  @media (max-width: 860px) {
+    .df-cta__visual img {
+      max-width: 24rem;
+    }
+  }
+</style>

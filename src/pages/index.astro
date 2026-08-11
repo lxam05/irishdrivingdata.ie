@@ -1,0 +1,148 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import StatsTable from '../components/StatsTable.astro';
+import DriveFlowCta from '../components/DriveFlowCta.astro';
+import {
+  allCentresWithTrends,
+  allPeriods,
+  counties,
+  data,
+  dataRangeLabel,
+  formatPeriod,
+  julyPeriods,
+  nationalAt,
+} from '../lib/centres';
+
+const centres = allCentresWithTrends();
+const countyList = counties();
+const { meta } = data;
+const periods = allPeriods();
+const julys = julyPeriods();
+const published = centres.filter((c) => c.passRate !== null).length;
+
+const julyPassRates = julys
+  .map((p) => {
+    const v = nationalAt(p.period)?.passRate;
+    return v == null ? null : `${p.label.replace('July ', '')}: ${v}%`;
+  })
+  .filter(Boolean)
+  .join(' · ');
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'Irish RSA driving test statistics by centre',
+  description: `Category B driving test pass rates, waiting times, tests delivered, no-shows, and abandoned tests for RSA centres in Ireland, compiled from CSO PxStat ROA30 and ROA36 (${dataRangeLabel()}).`,
+  url: meta.siteUrl,
+  creator: {
+    '@type': 'Person',
+    name: "Liam O'Connor",
+    url: `${meta.siteUrl}/about/#author`,
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: meta.siteName ?? 'Irish Driving Data',
+    url: meta.siteUrl,
+  },
+  license: 'https://creativecommons.org/licenses/by/4.0/',
+  temporalCoverage: `${periods[0]?.period}/${meta.period}`,
+  dateModified: meta.lastUpdated,
+  distribution: [
+    {
+      '@type': 'DataDownload',
+      encodingFormat: 'text/csv',
+      contentUrl: `${meta.siteUrl}/data/latest.csv`,
+    },
+    {
+      '@type': 'DataDownload',
+      encodingFormat: 'application/json',
+      contentUrl: `${meta.siteUrl}/data/latest.json`,
+    },
+  ],
+  variableMeasured: [
+    'Category B pass rate (%)',
+    'Estimated waiting time to test invite (weeks)',
+    'Driving tests delivered',
+    'Driving test no-shows',
+    'Driving tests not conducted / abandoned',
+  ],
+  citation: meta.citationLong ?? meta.citation,
+};
+---
+
+<BaseLayout
+  title={`Irish driving test pass rates & statistics (${meta.lastUpdatedLabel}) | Irish Driving Data`}
+  description={`Category B pass rates, waiting times, tests delivered, no-shows, and abandoned tests across RSA centres — full CSO monthly history ${dataRangeLabel()}.`}
+  canonicalPath="/"
+  jsonLd={jsonLd}
+>
+  <p class="eyebrow">CSO tracker · Category B · {dataRangeLabel()}</p>
+  <h1>Irish driving test pass rates &amp; statistics</h1>
+  <p class="lede">
+    Free, citable figures for every RSA test centre — pass rates, waiting times, tests
+    delivered, no-shows, and abandoned tests from CSO PxStat (ROA30 &amp; ROA36). Browse the
+    latest month on the tracker, or use Compare and Charts for deeper looks.
+  </p>
+
+  <ul class="national" aria-label="National averages">
+    <li>
+      <strong>{meta.national.passRate}%</strong>
+      <span>Pass rate ({meta.lastUpdatedLabel})</span>
+    </li>
+    <li>
+      <strong>{meta.national.waitWeeks} weeks</strong>
+      <span>Wait (est.)</span>
+    </li>
+    <li>
+      <strong>{meta.national.delivered.toLocaleString('en-IE')}</strong>
+      <span>Tests delivered</span>
+    </li>
+    <li>
+      <strong>{meta.national.noShow.toLocaleString('en-IE')}</strong>
+      <span>No-shows</span>
+    </li>
+    <li>
+      <strong>{meta.national.abandoned.toLocaleString('en-IE')}</strong>
+      <span>Abandoned tests</span>
+    </li>
+    <li>
+      <strong>{published}/{centres.length}</strong>
+      <span>Centres with published stats</span>
+    </li>
+  </ul>
+
+  <aside class="callout" aria-labelledby="july-heading">
+    <h2 id="july-heading">National pass rate (July each year)</h2>
+    <p>
+      July is the RSA’s main annual benchmark month. Open{' '}
+      <a href="/compare/">Compare</a> to put centres side by side, or{' '}
+      <a href="/charts/">Charts</a> for trends and rankings.
+    </p>
+    <p class="callout__series">{julyPassRates}</p>
+  </aside>
+
+  <p class="source-line">
+    Source: {meta.citationLong ?? meta.citation}. Data downloaded from{' '}
+    <a href="https://data.cso.ie/">data.cso.ie</a>. Waiting times are CSO estimates to invite
+    at month end — not live MyRoadSafety slots. Current snapshot: {formatPeriod(meta.period)}.
+  </p>
+
+  <div class="actions">
+    <a class="btn btn--primary" href="/compare/">Compare centres</a>
+    <a class="btn" href="/charts/">Open charts</a>
+    <a class="btn" href="/map/">View map</a>
+    <a class="btn" href="/data/latest.csv">Download CSV</a>
+    <a class="btn" href="/data/latest.json">Download JSON (full history)</a>
+    <a class="btn" href="/about/">Methodology</a>
+  </div>
+
+  <StatsTable
+    centres={centres}
+    counties={countyList}
+    periodLabel={meta.lastUpdatedLabel}
+    historyFrom={periods[0]?.period ?? meta.period}
+    historyTo={periods[periods.length - 1]?.period ?? meta.period}
+  />
+
+  <DriveFlowCta href="https://www.driveflow.ie/" />
+</BaseLayout>

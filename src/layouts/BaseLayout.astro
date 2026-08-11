@@ -1,0 +1,80 @@
+---
+import '../styles/global.css';
+import { data } from '../lib/centres';
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const { title, description, canonicalPath = '/', jsonLd } = Astro.props;
+const site = data.meta.siteUrl;
+const canonical = new URL(canonicalPath, site).href;
+const year = new Date().getFullYear();
+---
+
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content={data.meta.siteName} />
+    <meta property="og:locale" content="en_IE" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,550;9..144,650&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    {
+      (Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : []).map((schema) => (
+        <script type="application/ld+json" set:html={JSON.stringify(schema)} />
+      ))
+    }
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="/">Irish <span>Driving</span> Data</a>
+        <nav class="nav" aria-label="Primary">
+          <a href="/">Tracker</a>
+          <a href="/compare/">Compare</a>
+          <a href="/charts/">Charts</a>
+          <a href="/map/">Map</a>
+          <a href="/about/">About</a>
+          <a href="/data/latest.csv">Download CSV</a>
+        </nav>
+      </div>
+    </header>
+    <main id="main" class="page">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p>
+          © {year} {data.meta.siteName}. Free Category B driving test statistics for Ireland.
+        </p>
+        <p>
+          Maintained by <a href="https://www.driveflow.ie">DriveFlow</a>
+          · Written by <a href="/about/#author">Liam O'Connor</a>
+          · <a href="/about/">Methodology</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

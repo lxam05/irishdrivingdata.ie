@@ -1,0 +1,112 @@
+---
+import {
+  allCentresWithTrends,
+  data,
+  formatDelta,
+} from '../../lib/centres';
+
+export function getStaticPaths() {
+  return allCentresWithTrends().map((centre) => ({
+    params: { slug: centre.slug },
+    props: { centre },
+  }));
+}
+
+const { centre } = Astro.props;
+const { meta } = data;
+const pass =
+  centre.passRate === null ? 'Not published' : `${centre.passRate}%`;
+const wait =
+  centre.waitWeeks === null ? 'Not published' : `${centre.waitWeeks} weeks`;
+---
+
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>{centre.name} — Irish Driving Data embed</title>
+    <style>
+      :root {
+        --ink: #1a2332;
+        --muted: #5a6578;
+        --line: #d4cfc4;
+        --accent: #0c6e5a;
+        --bg: #fffcf7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font: 15px/1.45 system-ui, sans-serif;
+        color: var(--ink);
+        background: transparent;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        padding: 12px 14px;
+      }
+      .label {
+        margin: 0;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      h1 {
+        margin: 4px 0 10px;
+        font-size: 16px;
+        font-weight: 650;
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .metric strong {
+        display: block;
+        font-size: 22px;
+        font-variant-numeric: tabular-nums;
+      }
+      .metric span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .credit {
+        margin: 10px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .credit a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <article class="card">
+      <p class="label">RSA Category B · {meta.lastUpdatedLabel}</p>
+      <h1>{centre.name} driving test</h1>
+      <div class="row">
+        <div class="metric">
+          <strong>{pass}</strong>
+          <span>Pass rate · {formatDelta(centre.passRateDelta, 'pp')}</span>
+        </div>
+        <div class="metric">
+          <strong>{wait}</strong>
+          <span>Wait · {formatDelta(centre.waitWeeksDelta, 'w')}</span>
+        </div>
+      </div>
+      <p class="credit">
+        Data by
+        <a href={`${meta.siteUrl}/centres/${centre.slug}/`} target="_blank" rel="noopener"
+          >Irish Driving Data</a
+        >
+        · Source: {meta.citation}
+      </p>
+    </article>
+  </body>
+</html>
