@@ -2,7 +2,7 @@
 
 Free tracker of Irish RSA Category B driving test **pass rates**, **waiting times**, and **abandoned tests** by centre.
 
-- Site: [irishdrivingdata.ie](https://irishdrivingdata.ie)
+- Site: [www.irishdrivingdata.ie](https://www.irishdrivingdata.ie)
 - Maintained by [DriveFlow](https://www.driveflow.ie)
 - Written by Liam O'Connor
 
@@ -36,7 +36,7 @@ npm run build       # build static site
 
 ```html
 <div data-idd-centre="dun-laoghaire"></div>
-<script async src="https://irishdrivingdata.ie/embed.js"></script>
+<script async src="https://www.irishdrivingdata.ie/embed.js"></script>
 ```
 
 ## Routes

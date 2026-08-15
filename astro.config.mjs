@@ -3,7 +3,7 @@ import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
-  site: 'https://irishdrivingdata.ie',
+  site: 'https://www.irishdrivingdata.ie',
   output: 'static',
   trailingSlash: 'always',
   build: {

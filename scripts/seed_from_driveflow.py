@@ -69,11 +69,11 @@ def main() -> None:
             "citationLong": stats["citation"],
             "category": "B",
             "national": stats["national"],
-            "siteUrl": "https://irishdrivingdata.ie",
+            "siteUrl": "https://www.irishdrivingdata.ie",
             "siteName": "Irish Driving Data",
             "author": {
                 "name": "Liam O'Connor",
-                "url": "https://irishdrivingdata.ie/about/",
+                "url": "https://www.irishdrivingdata.ie/about/",
             },
         },
         "centres": centres,

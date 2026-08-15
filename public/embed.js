@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var ORIGIN = 'https://irishdrivingdata.ie';
+  var ORIGIN = 'https://www.irishdrivingdata.ie';
   try {
     if (typeof document !== 'undefined' && document.currentScript && document.currentScript.src) {
       ORIGIN = new URL(document.currentScript.src).origin;

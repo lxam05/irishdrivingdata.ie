@@ -13,11 +13,11 @@
       "noShow": 880,
       "abandoned": 2175
     },
-    "siteUrl": "https://irishdrivingdata.ie",
+    "siteUrl": "https://www.irishdrivingdata.ie",
     "siteName": "Irish Driving Data",
     "author": {
       "name": "Liam O'Connor",
-      "url": "https://irishdrivingdata.ie/about/"
+      "url": "https://www.irishdrivingdata.ie/about/"
     },
     "periods": [
       {
